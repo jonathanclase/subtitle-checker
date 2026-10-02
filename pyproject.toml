@@ -13,6 +13,8 @@ authors = [{ name = "Jonathan Clase" }]
 requires-python = ">=3.10"
 # Also needs ffmpeg and ffprobe installed on the system
 dependencies = [
+    # faster-whisper passes metadata_errors to av.open(), which PyAV 19 removed
+    "av<19",
     "chardet>=5",
     "ctranslate2>=4",
     "faster-whisper>=1.0",
