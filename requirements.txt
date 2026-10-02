@@ -1,0 +1,5 @@
+# Exact versions known to work. Also needs ffmpeg and ffprobe installed on the system.
+chardet==7.6.0
+ctranslate2==4.8.2
+faster-whisper==1.2.1
+pysrt==1.1.2

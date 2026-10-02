@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "subtitlechecker"
+version = "0.1.0"
+description = "Evaluates the match between a video file and a subtitle (`.srt` file) using sampling and faster-whisper. Returns statistical measures indicating what percentage of words match, the average offset, the standard deviation of the offset, and an overall conclusion about the match."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Jonathan Clase" }]
+requires-python = ">=3.10"
+# Also needs ffmpeg and ffprobe installed on the system
+dependencies = [
+    "chardet>=5",
+    "ctranslate2>=4",
+    "faster-whisper>=1.0",
+    "pysrt>=1.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/jonathanclase/subtitle-checker"
+Issues = "https://github.com/jonathanclase/subtitle-checker/issues"
+
+[project.scripts]
+subtitlechecker = "subtitlechecker.main:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
