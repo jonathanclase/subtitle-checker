@@ -21,6 +21,9 @@ dependencies = [
     "pysrt>=1.1",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
 [project.urls]
 Homepage = "https://github.com/jonathanclase/subtitle-checker"
 Issues = "https://github.com/jonathanclase/subtitle-checker/issues"
@@ -30,3 +33,6 @@ subtitlechecker = "subtitlechecker.main:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

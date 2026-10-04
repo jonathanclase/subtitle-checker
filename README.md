@@ -202,10 +202,13 @@ The full results and complete set of statistics are saved as a JSON file, at `/p
 
 #### 🟪 ${\color{purple}\textsf{Completed}}$
 - ~~Initial build~~
+- ~~Add test coverage~~
 
 #### 🟩 ${\color{green}\textsf{Now}}$
-- Add test coverage
 - Continue testing and refining thresholds. Determine what "good," "acceptable," and "poor" comparison results should actually mean to provide the best **decision**.
+   - Add minimum-word-per-clip thresholds. A scene matching 50% of two words is not informative
+   - Weight segment percent matched and summary percent matched lower when noise is higher. A noisy scene with a low match percentage should be taken with a grain of salt
+- Support multiple subtitle inputs against the same video
 
 #### 🟦 ${\color{blue}\textsf{Next}}$
 - Simplify the `summarize` logic to improve the **comparison** results
@@ -217,6 +220,7 @@ The full results and complete set of statistics are saved as a JSON file, at `/p
 - Add more detailed error handling for edge cases to provide better user feedback
 - Review performance on other hardware profiles
 - Explore support for other languages
+   - Include a first pass for language detection -- don't waste time transcribing clips that the model can't handle
 
 ## License
 
