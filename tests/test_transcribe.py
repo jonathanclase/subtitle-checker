@@ -1,7 +1,7 @@
 import pytest
 from subtitlechecker import transcribe as tr
 from subtitlechecker.fileobject import fileobject
-from subtitlechecker.evaluation_result import segment_evaluation_result, chunk
+from subtitlechecker.evaluation_result import chunk
 from conftest import words, whisper_word, whisper_segment, whisper_info
 
 @pytest.fixture(autouse=True)
@@ -58,9 +58,7 @@ def test_index_transcript():
         whisper_segment(" Okay", 5.0, 6.0, [whisper_word(" Okay", 5.0, 0.6)],
                         avg_logprob=-0.5, no_speech_prob=0.4, compression_ratio=2.0, temperature=0.2),
     ]
-    this_segment = segment_evaluation_result()
-
-    transcript = tr.index_transcript("00:01:00.000", segs, whisper_info(75.0, 30.0), this_segment)
+    transcript, this_segment = tr.index_transcript("00:01:00.000", segs, whisper_info(75.0, 30.0))
 
     # Word times are the clip start plus Whisper's time within the clip
     assert transcript == words((61.0, "hello"), (61.5, "world"), (65.0, "okay"))
@@ -69,7 +67,7 @@ def test_index_transcript():
     assert this_segment.duration == 75.0
     assert this_segment.duration_after_vad == 30.0
     assert this_segment.speech_fraction == pytest.approx(0.4)
-    assert this_segment.segment_probability == pytest.approx((0.9 + 0.7 + 0.6) / 3)
+    assert this_segment.probability == pytest.approx((0.9 + 0.7 + 0.6) / 3)
     assert this_segment.chunks == [
         chunk("Hello, world.", 61.0, 63.0, 2.0, 2, -0.2, 0.1, 1.5, 0.0),
         chunk("Okay", 65.0, 66.0, 1.0, 1, -0.5, 0.4, 2.0, 0.2),
@@ -81,27 +79,23 @@ def test_index_transcript():
     assert this_segment.retried is True
 
 def test_index_transcript_with_nothing_heard():
-    this_segment = segment_evaluation_result()
-
-    transcript = tr.index_transcript("00:01:00.000", [], whisper_info(0.0, 0.0), this_segment)
+    transcript, this_segment = tr.index_transcript("00:01:00.000", [], whisper_info(0.0, 0.0))
 
     assert transcript == []
     assert this_segment.speech_fraction is None
-    assert this_segment.segment_probability is None
+    assert this_segment.probability is None
     assert this_segment.chunks == []
     assert this_segment.mean_avg_logprob is None
     assert this_segment.max_no_speech_prob is None
     assert this_segment.retried is False
 
 def test_index_transcript_segment_without_words():
-    this_segment = segment_evaluation_result()
-
-    transcript = tr.index_transcript("00:00:00.000", [whisper_segment(" ", 0.0, 1.0, None, no_speech_prob=0.8)],
-                                     whisper_info(), this_segment)
+    transcript, this_segment = tr.index_transcript("00:00:00.000", [whisper_segment(" ", 0.0, 1.0, None, no_speech_prob=0.8)],
+                                                   whisper_info())
 
     assert transcript == []
     assert this_segment.chunks[0].word_count == 0
-    assert this_segment.segment_probability is None
+    assert this_segment.probability is None
     # No words to weight by, so there's no average
     assert this_segment.mean_avg_logprob is None
     assert this_segment.max_no_speech_prob == 0.8

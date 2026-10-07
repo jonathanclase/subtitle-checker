@@ -68,25 +68,25 @@ def aggregate(result:evaluation_result) -> None:
         summary.offset_stdev = statistics.stdev(offsets)
 
     # Segments where Whisper heard nothing have no probability, so they're left out
-    probabilities = [s.segment_probability for s in result.segments if s.segment_probability is not None]
+    probabilities = [s.clip.probability for s in result.segments if s.clip.probability is not None]
     if probabilities:
-        summary.average_segment_probability = statistics.mean(probabilities)
+        summary.average_clip_probability = statistics.mean(probabilities)
 
-    summary.total_duration = sum(s.duration for s in result.segments if s.duration is not None)
+    summary.total_duration = sum(s.clip.duration for s in result.segments if s.clip.duration is not None)
 
-    speech_fractions = [s.speech_fraction for s in result.segments if s.speech_fraction is not None]
+    speech_fractions = [s.clip.speech_fraction for s in result.segments if s.clip.speech_fraction is not None]
     if speech_fractions:
         summary.average_speech_fraction = statistics.mean(speech_fractions)
 
-    logprobs = [s.mean_avg_logprob for s in result.segments if s.mean_avg_logprob is not None]
+    logprobs = [s.clip.mean_avg_logprob for s in result.segments if s.clip.mean_avg_logprob is not None]
     if logprobs:
         summary.average_avg_logprob = statistics.mean(logprobs)
 
-    no_speech_probs = [s.max_no_speech_prob for s in result.segments if s.max_no_speech_prob is not None]
+    no_speech_probs = [s.clip.max_no_speech_prob for s in result.segments if s.clip.max_no_speech_prob is not None]
     if no_speech_probs:
         summary.max_no_speech_prob = max(no_speech_probs)
 
-    summary.retried_segment_count = sum(1 for s in result.segments if s.retried)
+    summary.retried_segment_count = sum(1 for s in result.segments if s.clip.retried)
 
 def green(text) -> str:
     """Green text"""
@@ -116,10 +116,10 @@ def summarize(result:evaluation_result) -> None:
     weighted_average_percent_matched = result.summary.weighted_average_percent_matched
     average_segment_offset = result.summary.average_segment_offset
     average_noise_level = result.summary.average_avg_logprob
-    average_segment_probability = result.summary.average_segment_probability
+    average_clip_probability = result.summary.average_clip_probability
     offset_stdev = result.summary.offset_stdev
 
-    confident = average_segment_probability is not None and average_segment_probability > CONFIDENCE_THRESHOLD
+    confident = average_clip_probability is not None and average_clip_probability > CONFIDENCE_THRESHOLD
     quiet = average_noise_level is not None and average_noise_level > LOGPROB_THRESHOLD
 
     consistent = offset_stdev is None or offset_stdev <= OFFSET_STDEV_THRESHOLD
@@ -176,9 +176,9 @@ def summarize(result:evaluation_result) -> None:
     else:
         narrative.append(f"The subtitle matched {red(f'{weighted_average_percent_matched:.2%}')}, which indicates the subtitles are not likely a match.")
         if confident:
-            narrative.append(f"The transcription confidence was {green(f'{average_segment_probability:.2%}')}, indicating high confidence in what was transcribed.")
-        elif average_segment_probability is not None:
-            narrative.append(f"The transcription confidence was {red(f'{average_segment_probability:.2%}')}, indicating low confidence in what was transcribed.")
+            narrative.append(f"The transcription confidence was {green(f'{average_clip_probability:.2%}')}, indicating high confidence in what was transcribed.")
+        elif average_clip_probability is not None:
+            narrative.append(f"The transcription confidence was {red(f'{average_clip_probability:.2%}')}, indicating low confidence in what was transcribed.")
 
         if quiet:
             narrative.append(f"The noise level of the samples was {green(f'{average_noise_level:.3}')}, indicating noise was not likely an issue.")

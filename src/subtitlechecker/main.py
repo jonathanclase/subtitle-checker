@@ -1,91 +1,83 @@
-import os, sys, tempfile, time
+import os, tempfile, time
+from argparse import ArgumentParser, ArgumentTypeError
 from .fileobject import fileobject
 from .evaluation_result import evaluation_result, segment_evaluation_result
 from . import transcribe, read_subtitles, get_clips, evaluate_match
 
 
-def main(video:str, subtitle:str) -> None:
+def main(video:str, subtitles:list) -> None:
     video = fileobject(video)
-    subtitle = fileobject(subtitle)
-    print(f"Video: {video.name} | Subtitle: {subtitle.name}")
-    result = evaluation_result()
-    subtitles = read_subtitles.index_subtitle(subtitle, result)
+    print(f"Transcribing clips from {video.name}")
 
     clips = get_clips.calculate_clip_times(video)
 
+    indexed_clips = []      # (clip start, transcript words, clip_transcription) per clip
     # The clips are only needed until they're transcribed, so they're deleted with the directory
     with tempfile.TemporaryDirectory(prefix="subtitlechecker_") as clip_dir:
         get_clips.create_clips(video, clips, clip_dir)
 
         for clip in clips:
             segs, info = transcribe.transcribe(clip.audio_clip)
-            this_segment = segment_evaluation_result()
-            this_segment.segment_start_timestamp = clip.clip_start
-            indexed_clip_transcript = transcribe.index_transcript(clip.clip_start, segs, info, this_segment)
-            evaluate_match.compare(subtitles, indexed_clip_transcript, this_segment)
+            indexed_clips.append((clip.clip_start, *transcribe.index_transcript(clip.clip_start, segs, info)))
+
+    for s in subtitles:
+        result = evaluation_result()
+        subtitle = fileobject(s)
+        print(f"Subtitle: {subtitle.name}")
+        subtitles_index = read_subtitles.index_subtitle(subtitle, result)
+        for clip_start, transcript, clip in indexed_clips:
+            # A fresh segment per subtitle for compare() to fill in; the clip is shared between them
+            this_segment = segment_evaluation_result(clip_start_timestamp=clip_start, clip=clip)
+            evaluate_match.compare(subtitles_index, transcript, this_segment)
             result.segments.append(this_segment)
 
-    evaluate_match.aggregate(result)
-    evaluate_match.summarize(result)
+        evaluate_match.aggregate(result)
+        evaluate_match.summarize(result)
 
-    print(f"{result.summary.narrative}")
-    print()
-    print(f"Overall conclusion: {result.summary.conclusion}")
+        print(f"\t- {result.summary.narrative}")
+        print(f"\t- Overall conclusion: {result.summary.conclusion}")
 
-    result_path = os.path.join(video.directory, video.stem + ".comparison.json")
-    with open(result_path, "w", encoding="utf-8") as output:
-        output.write(str(result))
+        result_path = os.path.join(subtitle.directory, subtitle.stem + ".comparison.json")
+        with open(result_path, "w", encoding="utf-8") as output:
+            output.write(str(result))
 
-    print()
-    print(f"Saved full results to {result_path}.")
+        print(f"\t- Saved full results to {result_path}.")
 
 
-def validate_arguments(args:list) -> bool:
-    """Checks that the arguments are an existing video file followed by an existing subtitle file.
-
-    Prints each problem it finds, so the user knows what to fix.
+def check_arg(extensions:tuple, kind="file"):
+    """Builds an argparse type function that accepts only existing files with one of the given extensions.
 
     Args:
-        args (list): The command-line arguments, without the script name
+        extensions (tuple): The allowed extensions, lowercase and including the dot, e.g. (".srt",)
+        kind (str): What the file is, used in the error message, e.g. "video"
 
     Returns:
-        bool: True if both files exist and have an allowed extension
+        function: A checker to pass as add_argument's type
     """
-    VIDEO_EXTENSIONS = (".mkv", ".mp4", ".avi", ".mov", ".m4v", ".webm", ".wmv", ".ts")
-    SUBTITLE_EXTENSIONS = (".srt",) #TODO: Allow additional types
-
-    if len(args) != 2:
-        print(f"Expected 2 arguments, got {len(args)}.")
-        return False
-
-    valid = True
-    for path, label, extensions in ((args[0], "Video", VIDEO_EXTENSIONS),
-                                    (args[1], "Subtitle", SUBTITLE_EXTENSIONS)):
-        if not os.path.isfile(path):
-            print(f"{label} file not found: {path}")
-            valid = False
-        # Checked even when the file is missing, so both problems are reported at once
-        if not path.lower().endswith(extensions):
-            print(f"{label} file must end in {', '.join(extensions)}: {path}")
-            valid = False
-    return valid
+    def check(s):
+        """Returns path s unchanged if it's valid, otherwise raises ArgumentTypeError so argparse reports it."""
+        if not os.path.isfile(s): raise ArgumentTypeError(f"File not found: {s}")
+        if not s.lower().endswith(extensions): raise ArgumentTypeError(f"File {s} not recognized as a {kind} file: {extensions}")
+        return s
+    return check
 
 
 def cli() -> None:
     """Entry point for the `subtitlechecker` command."""
-    args = sys.argv[1:]
 
-    if not validate_arguments(args):
-        print()
-        print("Usage: subtitlechecker <video> <subtitles>")
-        print("  <video>      The video to check, e.g. a .mkv or .mp4 file")
-        print("  <subtitles>  The .srt subtitle file to check it against")
-        print("Paths containing spaces must be quoted.")
-        sys.exit(1)
+    VIDEO_EXTENSIONS = (".mkv", ".mp4", ".avi", ".mov", ".m4v", ".webm", ".wmv", ".ts")
+    SUBTITLE_EXTENSIONS = (".srt",)
+
+    argparser = ArgumentParser()
+    argparser.add_argument('-v', '--video', required=True, type=check_arg(VIDEO_EXTENSIONS, "video"), help="The video to check, e.g. a .mkv or .mp4 file (Required)")
+    argparser.add_argument('-s', '--subtitle', required=True, type=check_arg(SUBTITLE_EXTENSIONS, "subtitle"), action="append", help="The .srt subtitle file or files to check it against. (At least one required)")
+
+    args = argparser.parse_args()
 
     started = time.monotonic()
-    main(args[0], args[1])
+    main(args.video, args.subtitle)
     minutes, seconds = divmod(round(time.monotonic() - started), 60)
+    print()
     print(f"Finished in {minutes}m {seconds:02}s.")
 
 

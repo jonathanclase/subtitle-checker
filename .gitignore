@@ -10,4 +10,4 @@ build/
 dist/
 build-dev/
 build-stage/
-**/scratch.py
+**/*scratch.py

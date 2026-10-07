@@ -23,14 +23,9 @@ class block_match():
     offset:float | None = None              # Median heard - subtitled time over the cue starts in the block; None if it has none
 
 @dataclass
-class segment_evaluation_result():
-    segment_start_timestamp:str | None = None
-    segment_probability:float | None = None
-    segment_offset:float | None = None      # Median offset over every matched cue start
-    transcript_word_count:int = 0
-    matched_word_count:int = 0              # Words in blocks of at least MIN_RUN words
-    percent_matched:float = 0.0             # matched_word_count / transcript_word_count, 0.0 - 1.0
-    longest_block:int = 0                   # Size of the largest block, in words
+class clip_transcription():
+    # Whisper's details about one clip, the same whichever subtitle it's compared against
+    probability:float | None = None
     # From Whisper's info. With language="en" forced in transcribe(), these are always "en" and 1.0
     language:str | None = None
     language_probability:float | None = None
@@ -42,8 +37,19 @@ class segment_evaluation_result():
     max_no_speech_prob:float | None = None
     max_compression_ratio:float | None = None
     retried:bool = False                    # True if any chunk had temperature > 0
-    blocks:list[block_match] = field(default_factory=list)
     chunks:list[chunk] = field(default_factory=list)
+
+@dataclass
+class segment_evaluation_result():
+    # One clip compared against one subtitle. The clip is shared by every subtitle's segment for it
+    clip:clip_transcription | None = None
+    clip_start_timestamp:str | None = None
+    segment_offset:float | None = None      # Median offset over every matched cue start
+    transcript_word_count:int = 0
+    matched_word_count:int = 0              # Words in blocks of at least MIN_RUN words
+    percent_matched:float = 0.0             # matched_word_count / transcript_word_count, 0.0 - 1.0
+    longest_block:int = 0                   # Size of the largest block, in words
+    blocks:list[block_match] = field(default_factory=list)
 
 @dataclass
 class evaluation_result_summary():
@@ -57,7 +63,7 @@ class evaluation_result_summary():
     max_longest_block:int = 0                           # The largest block in any segment, in words
     average_segment_offset: float | None = None
     offset_stdev:float | None = None                    # Spread of the segments' offsets, in seconds; None with fewer than two
-    average_segment_probability:float | None = None     # Mean of the segments' word probabilities
+    average_clip_probability:float | None = None     # Mean of the segments' word probabilities
     total_duration:float = 0.0                          # Seconds of audio transcribed, over every segment
     average_speech_fraction:float | None = None         # Mean of the segments' speech_fraction
     average_avg_logprob:float | None = None             # Mean of the segments' mean_avg_logprob

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "subtitlechecker"
-version = "0.1.0"
+version = "1.1.0"
 description = "Evaluates the match between a video file and a subtitle (`.srt` file) using sampling and faster-whisper. Returns statistical measures indicating what percentage of words match, the average offset, the standard deviation of the offset, and an overall conclusion about the match."
 readme = "README.md"
 license = "MIT"

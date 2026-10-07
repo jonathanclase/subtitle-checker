@@ -1,6 +1,7 @@
 import json, pytest
+from argparse import ArgumentTypeError
 from subtitlechecker import main as main_module, get_clips, transcribe
-from subtitlechecker.main import validate_arguments, cli
+from subtitlechecker.main import check_arg, cli
 from subtitlechecker.fileobject import fileobject
 from subtitlechecker.segment import segment
 from conftest import whisper_word, whisper_segment, whisper_info
@@ -13,54 +14,69 @@ def files(tmp_path):
     subtitle.write_text("1\n00:00:01,000 --> 00:00:03,000\nOne two three four five\n\n", encoding="utf-8")
     return str(video), str(subtitle)
 
-def test_validate_arguments_accepts_existing_files(files):
-    assert validate_arguments(list(files)) is True
+def test_check_arg_accepts_existing_file(files):
+    assert check_arg((".mkv",), "video")(files[0]) == files[0]
 
-def test_validate_arguments_extension_is_case_insensitive(tmp_path, files):
+def test_check_arg_extension_is_case_insensitive(tmp_path):
     video = tmp_path / "MOVIE.MKV"
     video.write_bytes(b"")
-    assert validate_arguments([str(video), files[1]]) is True
+    assert check_arg((".mkv",), "video")(str(video)) == str(video)
 
-@pytest.mark.parametrize("args", [[], ["only_one.mkv"], ["a.mkv", "b.srt", "c"]])
-def test_validate_arguments_wrong_count(capsys, args):
-    assert validate_arguments(args) is False
-    assert f"Expected 2 arguments, got {len(args)}." in capsys.readouterr().out
+def test_check_arg_missing_file(tmp_path):
+    with pytest.raises(ArgumentTypeError, match="File not found"):
+        check_arg((".srt",), "subtitle")(str(tmp_path / "missing.srt"))
 
-def test_validate_arguments_missing_file(capsys, tmp_path, files):
-    assert validate_arguments([files[0], str(tmp_path / "missing.srt")]) is False
-    assert "Subtitle file not found" in capsys.readouterr().out
-
-def test_validate_arguments_bad_extension(capsys, tmp_path, files):
+def test_check_arg_bad_extension(tmp_path):
     notes = tmp_path / "notes.txt"
     notes.write_text("")
-    assert validate_arguments([str(notes), files[1]]) is False
-    assert "Video file must end in .mkv" in capsys.readouterr().out
+    with pytest.raises(ArgumentTypeError, match="not recognized as a video file"):
+        check_arg((".mkv",), "video")(str(notes))
 
-def test_validate_arguments_reports_every_problem(capsys, tmp_path, files):
-    assert validate_arguments([str(tmp_path / "missing.txt"), files[1]]) is False
-    out = capsys.readouterr().out
-    assert "Video file not found" in out
-    assert "Video file must end in" in out
-
-def test_cli_exits_on_invalid_arguments(monkeypatch, capsys):
-    monkeypatch.setattr(main_module.sys, "argv", ["subtitlechecker"])
-    monkeypatch.setattr(main_module, "main", lambda video, subtitle: pytest.fail("main should not run"))
+@pytest.mark.parametrize("flags", [[], ["-v"], ["-s"]])
+def test_cli_requires_video_and_subtitle(monkeypatch, capsys, files, flags):
+    # Real files, so argparse reaches the missing flag rather than rejecting a file first
+    paths = {"-v": files[0], "-s": files[1]}
+    args = [arg for flag in flags for arg in (flag, paths[flag])]
+    monkeypatch.setattr("sys.argv", ["subtitlechecker", *args])
+    monkeypatch.setattr(main_module, "main", lambda video, subtitles: pytest.fail("main should not run"))
 
     with pytest.raises(SystemExit) as exit_info:
         cli()
 
-    assert exit_info.value.code == 1
-    assert "Usage: subtitlechecker <video> <subtitles>" in capsys.readouterr().out
+    # argparse exits with 2 on a usage error
+    assert exit_info.value.code == 2
+    assert "required" in capsys.readouterr().err
+
+def test_cli_rejects_invalid_file(monkeypatch, capsys, tmp_path, files):
+    monkeypatch.setattr("sys.argv", ["subtitlechecker", "-v", files[0], "-s", str(tmp_path / "missing.srt")])
+    monkeypatch.setattr(main_module, "main", lambda video, subtitles: pytest.fail("main should not run"))
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli()
+
+    assert exit_info.value.code == 2
+    assert "File not found" in capsys.readouterr().err
 
 def test_cli_runs_main(monkeypatch, capsys, files):
     calls = []
-    monkeypatch.setattr(main_module.sys, "argv", ["subtitlechecker", *files])
-    monkeypatch.setattr(main_module, "main", lambda video, subtitle: calls.append((video, subtitle)))
+    monkeypatch.setattr("sys.argv", ["subtitlechecker", "-v", files[0], "-s", files[1]])
+    monkeypatch.setattr(main_module, "main", lambda video, subtitles: calls.append((video, subtitles)))
 
     cli()
 
-    assert calls == [files]
+    assert calls == [(files[0], [files[1]])]
     assert "Finished in 0m 00s." in capsys.readouterr().out
+
+def test_cli_collects_every_subtitle(monkeypatch, tmp_path, files):
+    other = tmp_path / "other.srt"
+    other.write_text("")
+    calls = []
+    monkeypatch.setattr("sys.argv", ["subtitlechecker", "-v", files[0], "-s", files[1], "-s", str(other)])
+    monkeypatch.setattr(main_module, "main", lambda video, subtitles: calls.append(subtitles))
+
+    cli()
+
+    assert calls == [[files[1], str(other)]]
 
 def test_main_writes_comparison(monkeypatch, capsys, tmp_path, files):
     def create_clips(video_file, clips, clip_dir):
@@ -73,15 +89,16 @@ def test_main_writes_comparison(monkeypatch, capsys, tmp_path, files):
     monkeypatch.setattr(transcribe, "transcribe",
                         lambda clip: ([whisper_segment(" One two three four five", 1.2, 3.0, heard)], whisper_info()))
 
-    main_module.main(*files)
+    main_module.main(files[0], [files[1]])
 
     saved = json.loads((tmp_path / "movie.comparison.json").read_text(encoding="utf-8"))
     assert len(saved["segments"]) == 1
-    assert saved["segments"][0]["segment_start_timestamp"] == "00:00:00.000"
+    assert saved["segments"][0]["clip_start_timestamp"] == "00:00:00.000"
     assert saved["summary"]["total_subtitle_word_count"] == 5
     assert saved["summary"]["weighted_average_percent_matched"] == 1.0
     assert saved["summary"]["average_segment_offset"] == pytest.approx(0.2)
     out = capsys.readouterr().out
-    assert "Video: movie.mkv | Subtitle: movie.srt" in out
-    assert "Overall conclusion:" in out and "in sync" in out
-    assert "movie.comparison.json" in out
+    assert "Transcribing clips from movie.mkv" in out
+    assert "Subtitle: movie.srt" in out
+    assert "\t- Overall conclusion:" in out and "in sync" in out
+    assert "\t- Saved full results to" in out and "movie.comparison.json" in out

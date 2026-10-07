@@ -1,16 +1,27 @@
 import pytest
 from subtitlechecker.evaluate_match import compare, aggregate, green, yellow, red, summarize
-from subtitlechecker.evaluation_result import evaluation_result, evaluation_result_summary, segment_evaluation_result, block_match
+from subtitlechecker.evaluation_result import evaluation_result, evaluation_result_summary, segment_evaluation_result, clip_transcription, block_match
 from conftest import words, strip_ansi
 
 # Three cues of two words each, starting at 10s, 12s and 14s
 SUBTITLES = words((10.0, "a"), (10.0, "b"), (12.0, "c"), (12.0, "d"), (14.0, "e"), (14.0, "f"))
 
+def test_segments_share_clip_but_not_blocks():
+    clip = clip_transcription(duration=75.0)
+    first = segment_evaluation_result(clip=clip)
+    second = segment_evaluation_result(clip=clip)
+
+    # Each subtitle's segment gets its own blocks, so one subtitle's matches can't leak into another's
+    first.blocks.append(block_match(text="a b c d", size=4, transcript_timestamp=10.5, subtitle_timestamp=10.0))
+
+    assert first.clip is second.clip
+    assert second.blocks == []
+
 def test_compare_records_block_and_offsets():
     # "b" is heard far from its cue, but only a cue's first word has an exact time, so it's ignored
     transcript = words((10.5, "a"), (50.0, "b"), (13.0, "c"), (13.1, "d"), (15.5, "e"), (15.6, "f"),
                        (20.0, "noise"), (21.0, "noise"))
-    this_segment = segment_evaluation_result()
+    this_segment = segment_evaluation_result(clip=clip_transcription())
 
     compare(SUBTITLES, transcript, this_segment)
 
@@ -25,7 +36,7 @@ def test_compare_records_block_and_offsets():
 
 def test_compare_ignores_runs_shorter_than_min_run():
     transcript = words((10.0, "a"), (10.1, "b"), (12.0, "c"))
-    this_segment = segment_evaluation_result()
+    this_segment = segment_evaluation_result(clip=clip_transcription())
 
     compare(SUBTITLES, transcript, this_segment, min_run=4)
 
@@ -37,7 +48,7 @@ def test_compare_ignores_runs_shorter_than_min_run():
 def test_compare_block_starting_mid_cue():
     # The run starts mid-cue at "b", so its offset comes only from the cue starts "c" and "e"
     transcript = words((11.0, "b"), (12.5, "c"), (12.6, "d"), (14.5, "e"))
-    this_segment = segment_evaluation_result()
+    this_segment = segment_evaluation_result(clip=clip_transcription())
 
     compare(SUBTITLES, transcript, this_segment, min_run=2)
 
@@ -45,7 +56,7 @@ def test_compare_block_starting_mid_cue():
     assert this_segment.blocks[0].subtitle_timestamp == 10.0
 
 def test_compare_with_empty_transcript():
-    this_segment = segment_evaluation_result()
+    this_segment = segment_evaluation_result(clip=clip_transcription())
 
     compare(SUBTITLES, [], this_segment)
 
@@ -57,14 +68,16 @@ def test_aggregate():
     result = evaluation_result()
     result.summary.total_subtitle_word_count = 123
     result.segments = [
-        segment_evaluation_result(percent_matched=1.0, transcript_word_count=10, matched_word_count=10, longest_block=10,
-                                  segment_offset=1.0, segment_probability=0.9, duration=75.0, speech_fraction=0.5,
-                                  mean_avg_logprob=-0.2, max_no_speech_prob=0.1, retried=False),
-        segment_evaluation_result(percent_matched=0.5, transcript_word_count=30, matched_word_count=15, longest_block=5,
-                                  segment_offset=3.0, segment_probability=0.7, duration=75.0, speech_fraction=1.0,
-                                  mean_avg_logprob=-0.4, max_no_speech_prob=0.3, retried=True),
+        segment_evaluation_result(clip=clip_transcription(probability=0.9, duration=75.0, speech_fraction=0.5,
+                                                          mean_avg_logprob=-0.2, max_no_speech_prob=0.1, retried=False),
+                                  percent_matched=1.0, transcript_word_count=10, matched_word_count=10, longest_block=10,
+                                  segment_offset=1.0),
+        segment_evaluation_result(clip=clip_transcription(probability=0.7, duration=75.0, speech_fraction=1.0,
+                                                          mean_avg_logprob=-0.4, max_no_speech_prob=0.3, retried=True),
+                                  percent_matched=0.5, transcript_word_count=30, matched_word_count=15, longest_block=5,
+                                  segment_offset=3.0),
         # Whisper heard nothing, so every optional field stays None
-        segment_evaluation_result(),
+        segment_evaluation_result(clip=clip_transcription()),
     ]
 
     aggregate(result)
@@ -78,7 +91,7 @@ def test_aggregate():
     assert summary.max_longest_block == 10
     assert summary.average_segment_offset == pytest.approx(2.0)
     assert summary.offset_stdev == pytest.approx(2 ** 0.5)
-    assert summary.average_segment_probability == pytest.approx(0.8)
+    assert summary.average_clip_probability == pytest.approx(0.8)
     assert summary.total_duration == pytest.approx(150.0)
     assert summary.average_speech_fraction == pytest.approx(0.75)
     assert summary.average_avg_logprob == pytest.approx(-0.3)
@@ -86,7 +99,7 @@ def test_aggregate():
     assert summary.retried_segment_count == 1
 
 def test_aggregate_single_offset_has_no_stdev():
-    result = evaluation_result(segments=[segment_evaluation_result(segment_offset=1.5)])
+    result = evaluation_result(segments=[segment_evaluation_result(clip=clip_transcription(), segment_offset=1.5)])
 
     aggregate(result)
 
@@ -107,7 +120,7 @@ def test_colours(colour, code):
 def summarized(weighted=None, offset=None, stdev=None, probability=None, logprob=None) -> evaluation_result_summary:
     result = evaluation_result(summary=evaluation_result_summary(
         weighted_average_percent_matched=weighted, average_segment_offset=offset, offset_stdev=stdev,
-        average_segment_probability=probability, average_avg_logprob=logprob))
+        average_clip_probability=probability, average_avg_logprob=logprob))
     summarize(result)
     return result.summary
 
