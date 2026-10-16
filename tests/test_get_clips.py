@@ -1,43 +1,52 @@
 import json, os, pytest
 from subtitlechecker import get_clips
-from subtitlechecker.get_clips import calculate_clip_times, find_audio_stream, create_clips
+from subtitlechecker.get_clips import get_video_info, calculate_clip_times, find_audio_stream, create_clips
 from subtitlechecker.fileobject import fileobject
 from subtitlechecker.segment import segment
 from conftest import fake_run
 
 VIDEO = fileobject("/videos/movie.mkv")
 
-def ffprobe_duration(seconds:float) -> str:
-    return json.dumps({"format": {"duration": str(seconds)}})
+def ffprobe_info(seconds:float, streams:list) -> str:
+    return json.dumps({"streams": streams, "format": {"duration": str(seconds)}})
 
-def test_calculate_clip_times_spreads_clips_between_margins(monkeypatch):
+def test_get_video_info(monkeypatch):
     calls = []
     def run(command, **kwargs):
         calls.append(command)
-        return fake_run(ffprobe_duration(1000))
+        return fake_run(ffprobe_info(1000, [{"avg_frame_rate": "24000/1001"}]))
     monkeypatch.setattr(get_clips.subprocess, "run", run)
 
-    clips = calculate_clip_times(VIDEO, clip_count=5)
+    video_length, fps = get_video_info(VIDEO)
+
+    assert video_length == 1000.0
+    assert fps == pytest.approx(23.976, abs=0.001)
+    assert calls[0][0] == "ffprobe" and calls[0][-1] == VIDEO.path
+
+@pytest.mark.parametrize("streams, expected", [
+    ([{"avg_frame_rate": "25"}], 25.0),
+    ([{"avg_frame_rate": "0/0"}], 0.0),
+    ([], 0.0),
+])
+def test_get_video_info_frame_rate_edge_cases(monkeypatch, streams, expected):
+    monkeypatch.setattr(get_clips.subprocess, "run", lambda command, **kwargs: fake_run(ffprobe_info(1000, streams)))
+    assert get_video_info(VIDEO)[1] == expected
+
+def test_calculate_clip_times_spreads_clips_between_margins():
+    clips = calculate_clip_times(1000.0, clip_count=5)
 
     # Starts run from 300s to 1000 - 300 - 75 = 625s
     assert [c.clip_start for c in clips] == [
         "00:05:00.000", "00:06:21.250", "00:07:42.500", "00:09:03.750", "00:10:25.000"]
     assert all(c.audio_clip is None for c in clips)
-    assert calls[0][0] == "ffprobe" and calls[0][-1] == VIDEO.path
 
-def test_calculate_clip_times_rejects_fewer_than_two_clips(monkeypatch):
-    def run(command, **kwargs):
-        raise AssertionError("ffprobe should not run")
-    monkeypatch.setattr(get_clips.subprocess, "run", run)
-
+def test_calculate_clip_times_rejects_fewer_than_two_clips():
     with pytest.raises(ValueError, match="at least two"):
-        calculate_clip_times(VIDEO, clip_count=1)
+        calculate_clip_times(1000.0, clip_count=1)
 
-def test_calculate_clip_times_rejects_short_video(monkeypatch):
-    monkeypatch.setattr(get_clips.subprocess, "run", lambda command, **kwargs: fake_run(ffprobe_duration(600)))
-
+def test_calculate_clip_times_rejects_short_video():
     with pytest.raises(ValueError, match="too short"):
-        calculate_clip_times(VIDEO)
+        calculate_clip_times(600.0)
 
 @pytest.mark.parametrize("streams, expected", [
     ([{"index": 1, "tags": {"language": "fre"}}, {"index": 2, "tags": {"language": "eng"}}], 2),

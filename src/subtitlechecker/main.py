@@ -9,7 +9,8 @@ def main(video:str, subtitles:list, verbose:bool=False) -> None:
     video = fileobject(video)
     print(f"Transcribing clips from {video.name}")
 
-    clips = get_clips.calculate_clip_times(video)
+    video_length, fps = get_clips.get_video_info(video)
+    clips = get_clips.calculate_clip_times(video_length)
 
     indexed_clips = []      # (clip start, transcript words, clip_transcription) per clip
     # The clips are only needed until they're transcribed, so they're deleted with the directory
@@ -24,7 +25,12 @@ def main(video:str, subtitles:list, verbose:bool=False) -> None:
         result = evaluation_result()
         subtitle = fileobject(s)
         print(f"Subtitle: {subtitle.name}")
-        subtitles_index = read_subtitles.index_subtitle(subtitle, result)
+        # An unreadable subtitle shouldn't throw away the transcription the others still need
+        try:
+            subtitles_index = read_subtitles.index_subtitle(subtitle, result, fps)
+        except ValueError as e:
+            print(f"\t- Skipped: {e}")
+            continue
         for clip_start, transcript, clip in indexed_clips:
             # A fresh segment per subtitle for compare() to fill in; the clip is shared between them
             this_segment = segment_evaluation_result(clip_start_timestamp=clip_start, clip=clip)
@@ -67,12 +73,12 @@ def cli() -> None:
     """Entry point for the `subtitlechecker` command."""
 
     VIDEO_EXTENSIONS = (".mkv", ".mp4", ".avi", ".mov", ".m4v", ".webm", ".wmv", ".ts")
-    SUBTITLE_EXTENSIONS = (".srt",)
+    SUBTITLE_EXTENSIONS = (".srt", ".ass", ".vtt", ".sub")
 
     argparser = ArgumentParser()
     argparser.add_argument('-v', '--video', required=True, type=check_arg(VIDEO_EXTENSIONS, "video"), help="The video to check, e.g. a .mkv or .mp4 file (Required)")
-    argparser.add_argument('-s', '--subtitle', required=True, type=check_arg(SUBTITLE_EXTENSIONS, "subtitle"), action="append", help="The .srt subtitle file or files to check it against. (At least one required)")
-    argparser.add_argument('--verbose', required=False, action="store_true", help="Save the detailed results to as a .json file")
+    argparser.add_argument('-s', '--subtitle', required=True, type=check_arg(SUBTITLE_EXTENSIONS, "subtitle"), action="append", help="The subtitle file or files to check it against. (At least one required)")
+    argparser.add_argument('--verbose', required=False, action="store_true", help="Save the detailed results to a .json file")
 
     args = argparser.parse_args()
 

@@ -1,6 +1,6 @@
 # Subtitle Checker
 
-Evaluates the match between a video file and one or more subtitles (`.srt` files) using sampling and [faster-whisper](https://github.com/SYSTRAN/faster-whisper). Video samples are transcribed and each subtitle is compared against the transcript. For each subtitle, statistical measures are returned, including the percentage of matching words, the average offset, the standard deviation of the offset, and the overall conclusion.
+Evaluates the match between a video file and one or more (text-based) subtitles using sampling and [faster-whisper](https://github.com/SYSTRAN/faster-whisper). Video samples are transcribed and each subtitle is compared against the transcript. For each subtitle, statistical measures are returned, including the percentage of matching words, the average offset, the standard deviation of the offset, and the overall conclusion.
 
 ---
 ## User Scenarios
@@ -173,8 +173,7 @@ python -m subtitlechecker -v "Movie (1999).mkv" -s "Movie (1999).en.srt" -s "Mov
 ## Usage
 
 Currently:
- - Only `.srt` files are supported
- - Only English-language audio is supported
+  - Only English-language audio is supported
 
 ```bash
 subtitlechecker -v <video> -s <subtitle> [-s <subtitle> ...]
@@ -183,7 +182,7 @@ subtitlechecker -v <video> -s <subtitle> [-s <subtitle> ...]
 | Option | Description |
 |---|---|
 | `-v`, `--video` | The video to check, e.g. a `.mkv` or `.mp4` file (required) |
-| `-s`, `--subtitle` | A `.srt` subtitle file to check against the video. Repeat it to compare several subtitles in one run (at least one required) |
+| `-s`, `--subtitle` | A text subtitle file, e.g. an `.srt`, `.vtt`, `.ass`, or `.sub` (MicroDVD) file, to check against the video. Repeat it to compare several subtitles in one run (at least one required) |
 | `--verbose` | (Optional. Default *False*). Saves the full output and comparison details as `/path/to/subtitle/<subtitle name>.comparison.json`. For example, `Movie (1999).en.srt` produces `Movie (1999).en.comparison.json` |
 
 Paths containing spaces must be quoted. Run `subtitlechecker --help` for the full list of options.
@@ -222,6 +221,7 @@ When the `--verbose` flag is passed, the full results and complete set of statis
 - ~~Add test coverage~~
 - ~~Support multiple subtitle inputs against the same video~~
 - ~~Add verbose flag to save/discard full results as needed~~
+- ~~Add support for **other types of subtitles**, using other libraries~~
 
 #### 🟩 ${\color{green}\textsf{Now}}$
 - Continue testing and refining thresholds. Determine what "good," "acceptable," and "poor" comparison results should actually mean to provide the best **decision**.
@@ -234,7 +234,6 @@ When the `--verbose` flag is passed, the full results and complete set of statis
 
 
 #### 🟧 ${\color{orange}\textsf{Later}}$
-- Add support for **other types of subtitles**, using other libraries or in-memory conversions with ffmpeg.
 - Add more detailed error handling for edge cases to provide better user feedback
 - Review performance on other hardware profiles
 - Explore support for other languages

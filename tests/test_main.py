@@ -96,7 +96,8 @@ def fake_pipeline(monkeypatch):
             seg.audio_clip = fileobject(f"{clip_dir}/clip_{i:02}.wav")
     # Each word is heard 0.2s after its subtitle
     heard = [whisper_word(f" {w}", 1.2 + i * 0.3) for i, w in enumerate(["One", "two", "three", "four", "five"])]
-    monkeypatch.setattr(get_clips, "calculate_clip_times", lambda video_file: [segment("00:00:00.000")])
+    monkeypatch.setattr(get_clips, "get_video_info", lambda video_file: (1000.0, 24.0))
+    monkeypatch.setattr(get_clips, "calculate_clip_times", lambda video_length: [segment("00:00:00.000")])
     monkeypatch.setattr(get_clips, "create_clips", create_clips)
     monkeypatch.setattr(transcribe, "transcribe",
                         lambda clip: ([whisper_segment(" One two three four five", 1.2, 3.0, heard)], whisper_info()))
@@ -123,3 +124,14 @@ def test_main_writes_comparison_when_verbose(capsys, tmp_path, files, fake_pipel
     assert "Subtitle: movie.srt" in out
     assert "\t- Overall conclusion:" in out and "in sync" in out
     assert "\t- Saved full results to" in out and "movie.comparison.json" in out
+
+def test_main_skips_unreadable_subtitle(capsys, tmp_path, files, fake_pipeline):
+    vobsub = tmp_path / "movie.sub"
+    vobsub.write_bytes(b"\x00\x00\x01\xba\x44\x00\x04\x00\x04\x01" + bytes(range(256)) * 4)
+
+    main_module.main(files[0], [str(vobsub), files[1]])
+
+    out = capsys.readouterr().out
+    assert "Subtitle: movie.sub\n\t- Skipped:" in out and "VobSub" in out
+    # The readable subtitle after it is still checked
+    assert "Subtitle: movie.srt" in out and "\t- Overall conclusion:" in out

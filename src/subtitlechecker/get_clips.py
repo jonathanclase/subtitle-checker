@@ -5,14 +5,46 @@ from .segment import segment
 CLIP_DURATION = 75.0
 CLIP_COUNT = 5
 
-def calculate_clip_times(video_file:fileobject, clip_count:int=CLIP_COUNT) -> list[segment]:
+def get_video_info(video_file:fileobject) -> tuple[float, float]:
+    """Uses ffprobe to get the length and average frame rate of a video.
+
+    Args:
+        video_file (fileobject): A fileobject representing a video to examine
+
+    Returns:
+        tuple[float, float]: A tuple containing the video length and the average frame rate, which is 0 if unknown
+
+    Raises:
+        subprocess.CalledProcessError: If ffprobe fails
+    """
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "format=duration:stream=avg_frame_rate", "-of", "json", video_file.path],
+        capture_output=True, text=True, check=True)
+
+    video_info = json.loads(result.stdout)
+    video_length = float(video_info["format"]["duration"])
+
+    # The rate is a fraction such as "24000/1001", or "0/0" when ffprobe can't tell. There's no stream without video
+    avg_frame_rate = 0.0
+    streams = video_info.get("streams", [])
+    if streams:
+        numerator, _, denominator = streams[0]["avg_frame_rate"].partition("/")
+        denominator = float(denominator or 1)
+        if denominator:
+            avg_frame_rate = float(numerator) / denominator
+
+    return video_length, avg_frame_rate
+
+
+def calculate_clip_times(video_length:float, clip_count:int=CLIP_COUNT) -> list[segment]:
     """Spreads the clips evenly across the video and sets each one's `clip_start`.
 
     Every clip starts at least EDGE_MARGIN_S seconds in, and ends at least EDGE_MARGIN_S seconds
     before the end of the video. The first and last clips sit at those limits.
 
     Args:
-        video_file (fileobject): The video file to probe
+        video_length (float): The length of the video file
         clip_count (int): The number of clips for which to calculate timestamps, at least two
 
     Returns:
@@ -28,15 +60,10 @@ def calculate_clip_times(video_file:fileobject, clip_count:int=CLIP_COUNT) -> li
     if clip_count < 2:
         raise ValueError(f"The number of clips must be at least two, got {clip_count}")
 
-    result = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", video_file.path],
-        capture_output=True, text=True, check=True)
-    video_length = float(json.loads(result.stdout)["format"]["duration"])
-
     first_start = EDGE_MARGIN_S
     last_start = video_length - EDGE_MARGIN_S - CLIP_DURATION
     if last_start < first_start:
-        raise ValueError(f"'{video_file.path}' is {video_length:.0f}s long, too short for {CLIP_DURATION:.0f}s clips "
+        raise ValueError(f"Video is {video_length:.0f}s long, too short for {CLIP_DURATION:.0f}s clips "
                          f"{EDGE_MARGIN_S:.0f}s from each end")
 
     step = (last_start - first_start) / (clip_count - 1)
