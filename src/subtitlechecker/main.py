@@ -5,7 +5,7 @@ from .evaluation_result import evaluation_result, segment_evaluation_result
 from . import transcribe, read_subtitles, get_clips, evaluate_match
 
 
-def main(video:str, subtitles:list) -> None:
+def main(video:str, subtitles:list, verbose:bool=False) -> None:
     video = fileobject(video)
     print(f"Transcribing clips from {video.name}")
 
@@ -37,11 +37,12 @@ def main(video:str, subtitles:list) -> None:
         print(f"\t- {result.summary.narrative}")
         print(f"\t- Overall conclusion: {result.summary.conclusion}")
 
-        result_path = os.path.join(subtitle.directory, subtitle.stem + ".comparison.json")
-        with open(result_path, "w", encoding="utf-8") as output:
-            output.write(str(result))
+        if verbose:
+            result_path = os.path.join(subtitle.directory, subtitle.stem + ".comparison.json")
+            with open(result_path, "w", encoding="utf-8") as output:
+                output.write(str(result))
 
-        print(f"\t- Saved full results to {result_path}.")
+            print(f"\t- Saved full results to {result_path}.")
 
 
 def check_arg(extensions:tuple, kind="file"):
@@ -71,11 +72,12 @@ def cli() -> None:
     argparser = ArgumentParser()
     argparser.add_argument('-v', '--video', required=True, type=check_arg(VIDEO_EXTENSIONS, "video"), help="The video to check, e.g. a .mkv or .mp4 file (Required)")
     argparser.add_argument('-s', '--subtitle', required=True, type=check_arg(SUBTITLE_EXTENSIONS, "subtitle"), action="append", help="The .srt subtitle file or files to check it against. (At least one required)")
+    argparser.add_argument('--verbose', required=False, action="store_true", help="Save the detailed results to as a .json file")
 
     args = argparser.parse_args()
 
     started = time.monotonic()
-    main(args.video, args.subtitle)
+    main(args.video, args.subtitle, args.verbose)
     minutes, seconds = divmod(round(time.monotonic() - started), 60)
     print()
     print(f"Finished in {minutes}m {seconds:02}s.")

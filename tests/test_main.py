@@ -38,7 +38,7 @@ def test_cli_requires_video_and_subtitle(monkeypatch, capsys, files, flags):
     paths = {"-v": files[0], "-s": files[1]}
     args = [arg for flag in flags for arg in (flag, paths[flag])]
     monkeypatch.setattr("sys.argv", ["subtitlechecker", *args])
-    monkeypatch.setattr(main_module, "main", lambda video, subtitles: pytest.fail("main should not run"))
+    monkeypatch.setattr(main_module, "main", lambda video, subtitles, verbose: pytest.fail("main should not run"))
 
     with pytest.raises(SystemExit) as exit_info:
         cli()
@@ -49,7 +49,7 @@ def test_cli_requires_video_and_subtitle(monkeypatch, capsys, files, flags):
 
 def test_cli_rejects_invalid_file(monkeypatch, capsys, tmp_path, files):
     monkeypatch.setattr("sys.argv", ["subtitlechecker", "-v", files[0], "-s", str(tmp_path / "missing.srt")])
-    monkeypatch.setattr(main_module, "main", lambda video, subtitles: pytest.fail("main should not run"))
+    monkeypatch.setattr(main_module, "main", lambda video, subtitles, verbose: pytest.fail("main should not run"))
 
     with pytest.raises(SystemExit) as exit_info:
         cli()
@@ -60,25 +60,37 @@ def test_cli_rejects_invalid_file(monkeypatch, capsys, tmp_path, files):
 def test_cli_runs_main(monkeypatch, capsys, files):
     calls = []
     monkeypatch.setattr("sys.argv", ["subtitlechecker", "-v", files[0], "-s", files[1]])
-    monkeypatch.setattr(main_module, "main", lambda video, subtitles: calls.append((video, subtitles)))
+    monkeypatch.setattr(main_module, "main", lambda video, subtitles, verbose: calls.append((video, subtitles, verbose)))
 
     cli()
 
-    assert calls == [(files[0], [files[1]])]
+    # Without --verbose, the full results aren't saved
+    assert calls == [(files[0], [files[1]], False)]
     assert "Finished in 0m 00s." in capsys.readouterr().out
+
+def test_cli_passes_verbose(monkeypatch, files):
+    calls = []
+    monkeypatch.setattr("sys.argv", ["subtitlechecker", "-v", files[0], "-s", files[1], "--verbose"])
+    monkeypatch.setattr(main_module, "main", lambda video, subtitles, verbose: calls.append(verbose))
+
+    cli()
+
+    assert calls == [True]
 
 def test_cli_collects_every_subtitle(monkeypatch, tmp_path, files):
     other = tmp_path / "other.srt"
     other.write_text("")
     calls = []
     monkeypatch.setattr("sys.argv", ["subtitlechecker", "-v", files[0], "-s", files[1], "-s", str(other)])
-    monkeypatch.setattr(main_module, "main", lambda video, subtitles: calls.append(subtitles))
+    monkeypatch.setattr(main_module, "main", lambda video, subtitles, verbose: calls.append(subtitles))
 
     cli()
 
     assert calls == [[files[1], str(other)]]
 
-def test_main_writes_comparison(monkeypatch, capsys, tmp_path, files):
+@pytest.fixture
+def fake_pipeline(monkeypatch):
+    """Replaces clip cutting and Whisper with one clip that hears the subtitle's five words."""
     def create_clips(video_file, clips, clip_dir):
         for i, seg in enumerate(clips, start=1):
             seg.audio_clip = fileobject(f"{clip_dir}/clip_{i:02}.wav")
@@ -89,7 +101,16 @@ def test_main_writes_comparison(monkeypatch, capsys, tmp_path, files):
     monkeypatch.setattr(transcribe, "transcribe",
                         lambda clip: ([whisper_segment(" One two three four five", 1.2, 3.0, heard)], whisper_info()))
 
+def test_main_skips_comparison_file_by_default(capsys, tmp_path, files, fake_pipeline):
     main_module.main(files[0], [files[1]])
+
+    assert not (tmp_path / "movie.comparison.json").exists()
+    out = capsys.readouterr().out
+    assert "\t- Overall conclusion:" in out
+    assert "Saved full results" not in out
+
+def test_main_writes_comparison_when_verbose(capsys, tmp_path, files, fake_pipeline):
+    main_module.main(files[0], [files[1]], verbose=True)
 
     saved = json.loads((tmp_path / "movie.comparison.json").read_text(encoding="utf-8"))
     assert len(saved["segments"]) == 1

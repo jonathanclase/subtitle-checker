@@ -184,6 +184,7 @@ subtitlechecker -v <video> -s <subtitle> [-s <subtitle> ...]
 |---|---|
 | `-v`, `--video` | The video to check, e.g. a `.mkv` or `.mp4` file (required) |
 | `-s`, `--subtitle` | A `.srt` subtitle file to check against the video. Repeat it to compare several subtitles in one run (at least one required) |
+| `--verbose` | (Optional. Default *False*). Saves the full output and comparison details as `/path/to/subtitle/<subtitle name>.comparison.json`. For example, `Movie (1999).en.srt` produces `Movie (1999).en.comparison.json` |
 
 Paths containing spaces must be quoted. Run `subtitlechecker --help` for the full list of options.
 
@@ -198,7 +199,6 @@ Transcribing clips from Movie (1999).mkv
 Subtitle: Movie (1999).en.srt
     - The subtitle matched 87.41% of the sample transcripts, which indicates a likely match of the words. The speech typically comes 2.35s after its subtitle, so the subtitles should be delayed by that much. The offsets vary by only ±0.12s between samples, indicating the shift is consistent throughout.
     - Overall conclusion: Match, out of sync by +2.35s.
-    - Saved full results to Movie (1999).en.comparison.json.
 Subtitle: Movie (1999).alt.en.srt
      ...
 
@@ -207,7 +207,7 @@ Finished in 0m 52s.
 
 ## Output
 
-The full results and complete set of statistics for each subtitle are saved as a JSON file next to that subtitle, at `/path/to/subtitle/<subtitle name>.comparison.json`. For example, `Movie (1999).en.srt` produces `Movie (1999).en.comparison.json`. The results include:
+When the `--verbose` flag is passed, the full results and complete set of statistics for each subtitle are saved as a JSON file next to that subtitle, at `/path/to/subtitle/<subtitle name>.comparison.json`. For example, `Movie (1999).en.srt` produces `Movie (1999).en.comparison.json`. The results include:
 
 - **`summary`**: the overall figures. These include match percentage, overall offset and its spread, transcription confidence, and noise level, along with the narrative and conclusion text.
 - **`segments`**: one entry per audio clip. Each holds the clip's start time, match percentage, and offset. It also lists every matched run of words (`blocks`) and every Whisper transcription segment with its quality measures (`chunks`).
@@ -221,6 +221,7 @@ The full results and complete set of statistics for each subtitle are saved as a
 - ~~Initial build~~
 - ~~Add test coverage~~
 - ~~Support multiple subtitle inputs against the same video~~
+- ~~Add verbose flag to save/discard full results as needed~~
 
 #### 🟩 ${\color{green}\textsf{Now}}$
 - Continue testing and refining thresholds. Determine what "good," "acceptable," and "poor" comparison results should actually mean to provide the best **decision**.
